@@ -1,0 +1,9 @@
+method,seconds_per_prediction,heuristic
+gbm_batch,1.0425416597475608e-05,gap
+mlp_batch,6.722676981654433e-07,gap
+kre_per_row,1.9320832668907112e-06,gap
+cdp1_per_row,1.855717557999823e-05,gap
+gbm_batch,8.380555340813265e-06,rand
+mlp_batch,3.677777325113614e-07,rand
+kre_per_row,1.5416668934954538e-06,rand
+cdp1_per_row,1.4006573085983594e-05,rand

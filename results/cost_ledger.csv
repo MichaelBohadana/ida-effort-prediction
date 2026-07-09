@@ -1,0 +1,20 @@
+item,description,wall_time_s,note
+dist_sampling,"estimate_pancake_distribution(12, gap_h, 200k)",0.356,KRE analytic offline cost
+cond_sampling,"sample_conditional_matrix(12, gap_h, 200k)",1.794,CDP_1 analytic offline cost
+gbm_training,fit_gbm on gap_n12 full (n_train=4200),1.717,learned pipeline offline cost (training only)
+mlp_training,fit_mlp on gap_n12 full (n_train=4200),0.989,learned pipeline offline cost (training only)
+label_gen_20states,"gen labels 20 states gap n12 off=[0, 1, 2, 3] cap 2e7 (single-threaded)",68.443,direct measurement
+label_gen_full_extrap,"extrapolated to 1500 states (single-threaded, linear)",5133.3,extrapolation from 20-state sample
+label_gen_full_actual,"full gap n12 regen (repo ledger, parallel workers)",780.0,unverified estimate from session timestamps (gen_gap20m.log has no timing lines)
+label_gen_50states,implied label cost at 50 states (single-threaded extrap.),171.1,learning-curve sufficiency point (50-state)
+label_gen_400states,implied label cost at 400 states (single-threaded extrap.),1368.9,learning-curve sufficiency point (400-state)
+counter_throughput,"pancake DFS counter throughput (n=12, 99,890 nodes, median of 5 runs)",0.604,"165,392 nodes/sec"
+node_equiv_mlp,mlp per-prediction latency in node-expansions,5e-07,"0.1 node-equiv (lat=0.5µs, tput=165392 n/s)"
+node_equiv_gbm,gbm per-prediction latency in node-expansions,9.999999999999999e-06,"1.7 node-equiv (lat=10.0µs, tput=165392 n/s)"
+node_equiv_kre,kre per-prediction latency in node-expansions,2e-06,"0.3 node-equiv (lat=2.0µs, tput=165392 n/s)"
+node_equiv_cdp1,cdp1 per-prediction latency in node-expansions,1.6e-05,"2.6 node-equiv (lat=16.0µs, tput=165392 n/s)"
+node_equiv_probe_features,probe_features per-prediction latency in node-expansions,1.78e-05,"2.9 node-equiv (lat=17.8µs, tput=165392 n/s)"
+summary_analytic_total,analytic offline total (dist + cond),2.15,KRE + CDP_1 ready
+summary_learned_full,learned offline total (labels 1500 states + training),5136.0,single-threaded extrapolation
+summary_learned_400,learned offline total (labels 400 states + training),1371.6,single-threaded extrapolation
+summary_learned_50,learned offline total (labels 50 states + training),173.8,single-threaded extrapolation
