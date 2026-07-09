@@ -72,11 +72,23 @@ Both counters count the fertile nodes of the parent-pruned tree (nodes with
 (`count_expansions_reference`) checks the fast one in the tests.
 
 ### From states to a labeled dataset
-For each start state, a generator produces one row per offset. The bound is
-`h(state) + offset`. Each row stores the state, the bound, the node count, and a
-censored flag. A row is censored when the count passes the cap; censored rows are
-dropped from analysis and counted. The result is a `*labels*.csv` file, which is
-the only place the true node counts live.
+Each generator first samples `--n-states` start states, deduplicated through a
+`set`, then builds one job per state. All parameters travel inside the job tuple,
+so parallel workers under the macOS spawn start method never read module globals.
+For each state a worker computes `h(state)` once and produces one row per offset,
+with `bound = h(state) + offset`. Each row stores the state, the node count, a
+censored flag, and the feature vector for that (state, bound), so the labels and
+the model inputs are written together. A row is censored when the count reaches
+the cap. Censored rows are dropped from analysis and counted. The result is a
+`*labels*.csv` file, which is the only place the true node counts live.
+
+### Validation before use
+No label, distribution, or predictor is used before its gate passes. The counters
+are checked against independent reference counters, the tree-size recurrence
+against explicit enumeration, the sampled distributions against exact enumerated
+ones, and the KRE and CDP code against the papers' equations. The domain gates
+prove GAP is consistent and self-dual and RAND is inconsistent, over all 5,040
+states of the 7-pancake. See [tests.md](tests.md) for the full list.
 
 ### Distributions for the analytic predictors
 KRE and CDP do not run the search. They read distributions sampled from random

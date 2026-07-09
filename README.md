@@ -56,7 +56,9 @@ Full documentation is in [`docs/`](docs/):
 - [core-library.md](docs/core-library.md): file-by-file reference for the
   `effortpred/` package.
 - [scripts.md](docs/scripts.md): file-by-file reference for the `scripts/`
-  entry points.
+  entry points, including the generator mechanics.
+- [tests.md](docs/tests.md): the correctness gates in `tests/`, file-by-file,
+  and what each proves.
 - [data-and-results.md](docs/data-and-results.md): the datasets and the map from
   each committed CSV to the table it backs.
 
