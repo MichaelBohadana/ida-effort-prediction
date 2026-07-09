@@ -1,35 +1,35 @@
-# Workflow: how the pipeline fits together
+# Workflow and data pipeline
 
-This page is the end-to-end guide. It shows how the pieces connect and gives the
-exact commands to reproduce the study. If you read one document to understand
-the project, read this one. For the ideas behind each step, see
-[overview.md](overview.md).
+This page traces the data pipeline from state generation to final tables, names
+the exact functions and files at each step, and gives the commands to reproduce
+every result. For the per-file reference, see [core-library.md](core-library.md)
+and [scripts.md](scripts.md).
 
-## The pipeline in one picture
-
-Every experiment follows the same three stages: prepare the inputs, train and
-evaluate, then plot. The learned models and the analytic predictors share the
-same held-out test states, so the comparison is fair.
+## Pipeline stages
 
 ```
   STAGE 1  prepare inputs
 
-  start states (uniform random)
-     -> generate_pancake.py  (runs the bounded DFS counter on each state)
-     -> label CSV  (columns: state, bound, node count)
+  start states
+     random_pancake_state / random_solvable_state
+     -> generate_pancake.py / generate_tiles_uniform.py
+     -> count_expansions_pancake / count_expansions   (bounded DFS)
+     -> label CSV   (columns: state, bound, nodes, censored)
 
   random states
-     -> estimate_distribution.py  -> P(x)       (KRE reads this)
-     -> conditional sampling      -> p(v|vp)    (CDP1 reads this)
+     estimate_distribution.py / sample_conditional_matrix
+     -> P(x)      (KRE reads this)
+     -> p(v|vp)   (CDP1 reads this)
 
   STAGE 2  train and evaluate
 
   label CSV
      -> train_eval_pancake.py
-          . split 70/15/15 by state
-          . train GBM and MLP on the train split
-          . run KRE and CDP1 on the same held-out test states
-          . score everyone in log10 space
+          split_by_state          70/15/15, grouped by state
+          extract_pancake_features build model inputs
+          fit_gbm / fit_mlp       train the learned models
+          kre_predict_pancake / cdp1_predict  run the analytic predictors
+          eval_log10_predictions  score every method on the same test rows
      -> summary CSVs in results/
 
   STAGE 3  plot
@@ -39,23 +39,67 @@ same held-out test states, so the comparison is fair.
      -> figure PDFs
 ```
 
-The key idea: the label CSV is the ground truth (real node counts), and every
-predictor is judged against it on the same test states. The learned models learn
-from the training rows. The analytic predictors do not train, but they still
-need an offline sampling pass to estimate their distributions.
+## Data generation pipeline (explicit)
 
-## What connects to what
+This section answers where each piece of data comes from.
 
-- The **label CSV** is produced by a generation script and read by the
-  evaluation script. It is the only place the true node counts live.
-- The **distribution files** (`P(x)` and the conditional matrices) are what let
-  KRE and CDP1 predict without running the search. They are sampled from random
-  states, separate from the labeled rows.
-- The **summary CSVs** in `results/` are the scored comparison tables. These are
-  committed to the repository, so you can read the paper's numbers without
-  rerunning anything.
-- The **figures** are drawn only from the summary CSVs (and one label file for
-  the scatter), so they are cheap to regenerate once the CSVs exist.
+### Pancake domain and states
+The pancake domain is defined in `effortpred/pancake.py`. States are permutations
+of `0..n-1`. Start states for the datasets are drawn by `random_pancake_state(n,
+rng)`, which returns a uniformly random permutation. The generator
+`scripts/generate_pancake.py` calls this function once per requested state.
+
+### 15-puzzle domain and states
+The sliding-tile domain is defined in `effortpred/puzzle.py`. For the paper's
+generalization study, start states are uniformly random solvable states from
+`random_solvable_state(n, rng)`, called by
+`scripts/generate_tiles_uniform.py`. The earlier pilot generator
+`scripts/generate_data.py` instead used `random_walk_state`, which is why the
+uniform-state study replaced it.
+
+### Node counting (the labels)
+The label of a row is the true number of nodes one bounded pass expands. It is
+computed by a bounded depth-first search, not estimated.
+
+- Pancake labels: `count_expansions_pancake(state, bound, h_fn, cap)` in
+  `effortpred/pancake_count.py`. The heuristic `h_fn` is `gap_h` for the
+  consistent set and `rand_h` for the inconsistent set.
+- 15-puzzle labels: `count_expansions(state, n, bound, cap)` in
+  `effortpred/count.py`, using Manhattan distance.
+
+Both counters count the fertile nodes of the parent-pruned tree (nodes with
+`f = g + h <= bound`), with no goal stop. A slow reference counter
+(`count_expansions_reference`) checks the fast one in the tests.
+
+### From states to a labeled dataset
+For each start state, a generator produces one row per offset. The bound is
+`h(state) + offset`. Each row stores the state, the bound, the node count, and a
+censored flag. A row is censored when the count passes the cap; censored rows are
+dropped from analysis and counted. The result is a `*labels*.csv` file, which is
+the only place the true node counts live.
+
+### Distributions for the analytic predictors
+KRE and CDP do not run the search. They read distributions sampled from random
+states, separate from the labeled rows.
+
+- KRE reads `P(x)`, the heuristic-value distribution. On the pancake it comes
+  from `estimate_pancake_distribution`. On the 15-puzzle it comes from
+  `scripts/estimate_distribution.py`, saved as `.npy`.
+- CDP1 reads the conditional matrix `p(v | vp)` from `sample_conditional_matrix`.
+
+## Feature extraction
+The learned models never see the raw state. `train_eval_pancake.py` calls
+`extract_pancake_features(state, bound)` to build the 13-feature vector for each
+row (or the 2-feature minimal vector under `--feature-set minimal`). The
+15-puzzle scripts use `extract_features`. The optional probe tier adds
+`extract_probe_features`. Feature definitions are in [core-library.md](core-library.md).
+
+## Model training
+`split_by_state` partitions the rows 70/15/15 grouped by state. `fit_gbm` trains
+the gradient-boosted trees, and `fit_mlp` trains the MLP with early stopping on
+the validation split. The analytic predictors are computed on the same test rows
+by `kre_predict_pancake` and `cdp1_predict`. Every method is scored by
+`eval_log10_predictions`, with standard errors from `cluster_bootstrap_se`.
 
 ## Setup
 
@@ -64,55 +108,40 @@ python3 -m venv .venv
 .venv/bin/pip install -e ".[dev]"
 ```
 
-This installs the `effortpred` package and the test tools into a local virtual
-environment. Python 3.11 or newer is required. Everything runs on the CPU.
+Python 3.11 or newer is required. All experiments run on the CPU.
 
-## Check correctness first
-
-Before trusting any result, run the test suite. It verifies each component
-exhaustively where the state space is small enough.
+## Correctness checks
 
 ```
 .venv/bin/pytest
 ```
 
-This checks, among other things, the 8-puzzle solvability rule against a
-breadth-first search over all `9!` states, the pancake heuristics over all 5,040
-states of the 7-pancake (including that GAP is self-dual and RAND is
-inconsistent), the tree-size recurrence against explicit enumeration, and the
-KRE and CDP code against the equations in their papers.
+The suite verifies each component exhaustively where the state space is small:
+the 8-puzzle solvability rule against breadth-first reachability over all `9!`
+states, the pancake heuristics over all 5,040 states of the 7-pancake (including
+that GAP is self-dual and RAND is inconsistent), the tree-size recurrence against
+explicit enumeration, and the KRE and CDP code against the equations in their
+papers.
 
-## Reproducing the study
+## Reproduction commands
 
-All randomness is seeded, so every command is deterministic. The only slow part
-is label generation: labeling the 12-pancake GAP set runs a bounded search on
-1,500 start states and takes on the order of an hour on a multi-core CPU.
-Everything after generation runs in seconds to a few minutes.
-
-The stages below match the sections of the report. You can run just the ones you
-care about. Each writes its output to `results/`.
+All randomness is seeded. Label generation is the only slow stage: labeling the
+12-pancake GAP set runs a bounded search on 1,500 states and takes on the order
+of an hour on a multi-core CPU. Every later stage runs in seconds to a few
+minutes. Each stage below matches a section of the report and writes to
+`results/`.
 
 ### Stage A: main pancake comparison
-
-Produces the headline table and the equal-information ablation on the
-12-pancake, under both heuristics.
+Produces the headline table and the equal-information ablation on the 12-pancake.
 
 ```
-# Generate the labeled datasets (the slow step).
 .venv/bin/python scripts/generate_pancake.py --heuristic gap  --offsets 0 1 2 3 --cap 20000000
 .venv/bin/python scripts/generate_pancake.py --heuristic rand --offsets 0 1     --cap 2000000
-
-# Full 13-feature models plus the KRE and CDP1 baselines.
 .venv/bin/python scripts/train_eval_pancake.py
-
-# Equal-information ablation: restrict the learned models to CDP1's exact
-# inputs (the active heuristic value and the bound).
 .venv/bin/python scripts/train_eval_pancake.py --feature-set minimal
 ```
 
 ### Stage B: depth study (10-pancake)
-
-The smaller board reaches deeper offsets within the node cap.
 
 ```
 .venv/bin/python scripts/generate_pancake.py --heuristic gap  --n 10 --n-states 1000 --offsets 0 1 2 3 4 --cap 20000000 --out results/pancake_labels_gap_n10.csv
@@ -121,7 +150,7 @@ The smaller board reaches deeper offsets within the node cap.
 .venv/bin/python scripts/train_eval_pancake.py --n 10 --data-suffix _n10 --feature-set minimal
 ```
 
-### Stage C: extrapolation to an unseen depth
+### Stage C: extrapolation
 
 ```
 .venv/bin/python scripts/extrapolation_test.py
@@ -169,17 +198,12 @@ The smaller board reaches deeper offsets within the node cap.
 ```
 
 ### Stage J: figures
-
-The figure script reads frozen CSVs and one raw label dataset (the scatter plot
-is drawn from the individual 12-pancake GAP instances), so run stages A, B, D,
-E, and G first, then:
+Depends on stages A, B, D, E, and G.
 
 ```
 .venv/bin/python scripts/make_report_figures.py
 ```
 
-## A shortcut for checking the numbers
-
-If you only want to confirm the reported numbers, you do not need to run
-anything. The frozen summary CSVs are already in `results/`. See
+## Reading the numbers without rerunning
+The frozen summary CSVs are committed in `results/`. See
 [data-and-results.md](data-and-results.md) for which file backs which table.

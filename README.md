@@ -1,24 +1,26 @@
 # effortpred: Predicting IDA\* Search Effort
 
-Can you predict how much work a search will take before you run it?
+This repository predicts the number of nodes one bounded IDA\* pass expands, from
+static features of the start state, before the search runs. It compares two
+learned regressors, a gradient-boosted tree ensemble (GBM) and a small neural
+network (MLP), against two analytic predictors from the search literature, the
+KRE formula and the one-step Conditional Distribution Prediction model (CDP1).
+The evaluation covers the pancake puzzle under a consistent heuristic (GAP) and a
+controlled inconsistent heuristic (RAND), and the 15-puzzle under Manhattan
+distance.
 
-IDA\* (iterative-deepening A\*) explores a problem in a series of bounded passes.
-The number of nodes a single pass expands swings by orders of magnitude from one
-start state to another, even at the same bound. This project predicts that
-number ahead of time, from features of the start state.
+Result summary: the learned models are the most accurate on per-instance
+prediction in every tested setting, while CDP1 remains the most accurate at
+extrapolating to deeper bounds under the consistent heuristic. The two approaches
+divide the work.
 
-We train two learned models, a gradient-boosted tree ensemble (GBM) and a small
-neural network (MLP), and compare them head to head against two analytic
-predictors from the search literature: the KRE formula and the one-step
-Conditional Distribution Prediction model (CDP1). The comparison runs on the
-pancake puzzle, under a consistent heuristic and a controlled inconsistent one,
-and on the 15-puzzle.
+## Requirements
 
-The short version of the finding: the learned models are the most accurate at
-predicting a single instance, while CDP1 stays ahead at extrapolating to deeper
-bounds under a consistent heuristic. The two approaches divide the work.
+- Python 3.11 or newer.
+- The dependencies in `pyproject.toml`: NumPy, pandas, scikit-learn, SciPy,
+  Matplotlib, and PyTorch. All experiments run on the CPU.
 
-## Quick start
+## Setup and checks
 
 ```
 python3 -m venv .venv
@@ -26,10 +28,12 @@ python3 -m venv .venv
 .venv/bin/pytest
 ```
 
-Python 3.11 or newer is required. Everything runs on the CPU. The test suite
-checks every component, exhaustively where the state space is small.
+The test suite verifies each component, exhaustively where the state space is
+small enough to enumerate.
 
-To reproduce the main pancake comparison (the slow generation step aside):
+## Main reproduction command
+
+The main pancake comparison, after the slow generation step:
 
 ```
 .venv/bin/python scripts/generate_pancake.py --heuristic gap  --offsets 0 1 2 3 --cap 20000000
@@ -37,32 +41,34 @@ To reproduce the main pancake comparison (the slow generation step aside):
 .venv/bin/python scripts/train_eval_pancake.py
 ```
 
-You do not have to run anything to read the reported numbers. The frozen result
-tables are already in `results/`.
+The frozen summary tables are already in `results/`, so the reported numbers can
+be read without rerunning the pipeline.
 
 ## Documentation
 
-The full documentation lives in [`docs/`](docs/):
+Full documentation is in [`docs/`](docs/):
 
-- **[overview.md](docs/overview.md)**: the prediction task, the four predictors,
-  and the two domains, in plain terms. Start here for the ideas.
-- **[workflow.md](docs/workflow.md)**: how the pipeline fits together and the
-  exact commands to reproduce every result. Start here to run things.
-- **[core-library.md](docs/core-library.md)**: a tour of the `effortpred/`
-  package, module by module.
-- **[scripts.md](docs/scripts.md)**: what each script in `scripts/` does.
-- **[data-and-results.md](docs/data-and-results.md)**: the datasets and which
-  committed CSV backs which table.
+- [overview.md](docs/overview.md): the prediction task, the predictors, and the
+  two domains.
+- [workflow.md](docs/workflow.md): the data pipeline (state generation, node
+  counting, dataset construction, feature extraction, model training) and the
+  full reproduction commands.
+- [core-library.md](docs/core-library.md): file-by-file reference for the
+  `effortpred/` package.
+- [scripts.md](docs/scripts.md): file-by-file reference for the `scripts/`
+  entry points.
+- [data-and-results.md](docs/data-and-results.md): the datasets and the map from
+  each committed CSV to the table it backs.
 
 ## Repository layout
 
 ```
-effortpred/     Core library: domains, heuristics, node counters, the KRE
-                and CDP predictors, features, models, and metrics.
-scripts/        Command-line entry points for each stage of the pipeline.
+effortpred/     Core library: domains, heuristics, node counters, the KRE and
+                CDP predictors, feature extractors, models, and metrics.
+scripts/        Command-line entry points for each pipeline stage.
 tests/          Correctness gates, exhaustive on the small state spaces.
 results/        Frozen summary CSVs that back the tables in the report.
-docs/           The documentation linked above.
+docs/           The documentation listed above.
 pyproject.toml  Package metadata and dependencies.
 ```
 
