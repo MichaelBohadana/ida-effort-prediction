@@ -73,11 +73,3 @@ results/        Frozen summary CSVs that back the tables in the report.
 docs/           The documentation listed above.
 pyproject.toml  Package metadata and dependencies.
 ```
-
-## Citation
-
-If you use this code, please cite the accompanying report:
-
-> M. Bohadana and N. Klein. Predicting IDA\* Search Effort: Learned Models vs.
-> KRE and CDP1. Course 237-2-5513 (Search in Artificial Intelligence),
-> Ben-Gurion University of the Negev.
